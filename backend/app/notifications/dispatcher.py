@@ -25,6 +25,14 @@ def _build_message(monitor_name: str, event: IncidentEvent, incident_type: str |
     return f"[StatusSense] {monitor_name}: incidente resuelto. Health score: {health_score}"
 
 
+async def _send_to_channel(channel_type: str, config: dict, message: str, **extra) -> bool:
+    if channel_type == "telegram":
+        return await send_telegram(config.get("bot_token", ""), config.get("chat_id", ""), message)
+    if channel_type == "webhook":
+        return await send_webhook(config.get("url", ""), {"message": message, **extra})
+    return False
+
+
 async def dispatch_incident_notification(
     monitor_name: str,
     event: IncidentEvent,
@@ -43,16 +51,17 @@ async def dispatch_incident_notification(
 
     for row in rows:
         config = json.loads(row["config_json"])
-        if row["type"] == "telegram":
-            await send_telegram(config.get("bot_token", ""), config.get("chat_id", ""), message)
-        elif row["type"] == "webhook":
-            await send_webhook(
-                config.get("url", ""),
-                {
-                    "monitor": monitor_name,
-                    "event": event,
-                    "incident_type": incident_type,
-                    "health_score": health_score,
-                    "message": message,
-                },
-            )
+        await _send_to_channel(
+            row["type"],
+            config,
+            message,
+            monitor=monitor_name,
+            event=event,
+            incident_type=incident_type,
+            health_score=health_score,
+        )
+
+
+async def send_test_notification(channel_type: str, config: dict) -> bool:
+    message = "[StatusSense] Notificacion de prueba: si ves esto, el canal esta bien configurado."
+    return await _send_to_channel(channel_type, config, message)

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from ..database import get_db
 from ..models import NotificationChannelCreate, NotificationChannelOut
+from ..notifications import send_test_notification
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -39,6 +40,18 @@ async def create_channel(payload: NotificationChannelCreate):
         await db.execute("SELECT * FROM notification_channels WHERE id = ?", (cursor.lastrowid,))
     ).fetchone()
     return _row_to_out(row)
+
+
+@router.post("/{channel_id}/test")
+async def test_channel(channel_id: int):
+    db = get_db()
+    row = await (
+        await db.execute("SELECT * FROM notification_channels WHERE id = ?", (channel_id,))
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
+    ok = await send_test_notification(row["type"], json.loads(row["config_json"]))
+    return {"success": ok}
 
 
 @router.delete("/{channel_id}", status_code=204)
