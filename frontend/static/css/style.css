@@ -256,11 +256,55 @@ th { color: var(--text-dim); font-weight: 500; }
 
 .status-summary {
   display: flex;
-  gap: 24px;
+  gap: 8px;
   flex-wrap: wrap;
   margin-top: 8px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   color: var(--text-dim);
-  font-size: 0.85rem;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.filter-chip:hover { border-color: var(--blue); color: var(--text); }
+.filter-chip.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: white;
+}
+.filter-chip .count {
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.heatbar {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.heat-cell {
+  width: 8px;
+  min-width: 8px;
+  height: 24px;
+  border-radius: 2px;
+  background: var(--green);
+  cursor: default;
+}
+.heat-cell.fail { background: var(--red); }
+.heatbar-caption {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  margin-top: 4px;
 }
 
 @media (max-width: 480px) {

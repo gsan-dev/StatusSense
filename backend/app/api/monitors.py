@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from ..config import settings
 from ..database import get_db
 from ..models import MonitorCreate, MonitorOut, MonitorUpdate
-from ..scheduler import schedule_monitor, unschedule_monitor
+from ..scheduler import run_monitor_check, schedule_monitor, unschedule_monitor
 
 router = APIRouter(prefix="/api/monitors", tags=["monitors"])
 
@@ -140,3 +140,31 @@ async def delete_monitor(monitor_id: int):
     await db.execute("DELETE FROM monitors WHERE id = ?", (monitor_id,))
     await db.commit()
     return None
+
+
+@router.delete("/{monitor_id}/history", status_code=204)
+async def reset_monitor_history(monitor_id: int):
+    """Borra el historico (checks, health snapshots e incidentes) de un monitor
+    sin eliminar su configuracion, para volver a partir de una linea base limpia.
+    """
+    db = get_db()
+    row = await (await db.execute("SELECT id FROM monitors WHERE id = ?", (monitor_id,))).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Monitor no encontrado")
+    await db.execute("DELETE FROM checks WHERE monitor_id = ?", (monitor_id,))
+    await db.execute("DELETE FROM health_snapshots WHERE monitor_id = ?", (monitor_id,))
+    await db.execute("DELETE FROM incidents WHERE monitor_id = ?", (monitor_id,))
+    await db.commit()
+    return None
+
+
+@router.post("/{monitor_id}/check-now", response_model=MonitorOut)
+async def check_monitor_now(monitor_id: int):
+    """Fuerza una comprobacion inmediata sin esperar al siguiente intervalo del scheduler."""
+    db = get_db()
+    row = await (await db.execute("SELECT id FROM monitors WHERE id = ?", (monitor_id,))).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Monitor no encontrado")
+    await run_monitor_check(monitor_id)
+    updated = await (await db.execute("SELECT * FROM monitors WHERE id = ?", (monitor_id,))).fetchone()
+    return await _row_to_monitor_out(updated)

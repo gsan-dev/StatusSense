@@ -47,8 +47,11 @@ Los servicios no suelen caerse de golpe: normalmente hay una fase previa de degr
 ### Diferenciadores
 - **Detección de tendencia de degradación**: regresión lineal sobre la ventana móvil de latencia.
 - **Detección de varianza anómala**: un servicio estable que empieza a fluctuar es una señal de alerta temprana.
-- **Health Score (0-100)** por servicio: combina uptime, tendencia y varianza en un único número.
+- **Health Score (0-100)** por servicio: combina uptime, tendencia y varianza en un único número, con desglose consultable de cada señal.
 - **Clasificación de incidentes**: distingue "caída súbita" de "degradación progresiva" en el histórico.
+- **Timeline de fallos**: un vistazo (heatbar) a exactamente qué comprobaciones fallaron y por qué, con hora y motivo al pasar el ratón.
+- **Notificaciones con verificación**: Telegram, webhook genérico y Discord (autodetectado por URL), con botón de prueba antes de depender de ellas en una caída real.
+- **Comprobación manual y reinicio de histórico**: fuerza un check inmediato o borra el histórico de un monitor (sin perder su configuración) desde el propio panel.
 
 ## 🏗️ Arquitectura
 
@@ -82,9 +85,13 @@ SQLite con tablas `monitors`, `checks`, `health_snapshots`, `incidents` y `notif
 | `DELETE` | `/api/monitors/{id}` | Elimina un monitor |
 | `GET` | `/api/monitors/{id}/checks` | Histórico de checks (paginado) |
 | `GET` | `/api/monitors/{id}/incidents` | Incidentes clasificados |
+| `GET` | `/api/monitors/{id}/health-snapshots` | Desglose histórico del health score (uptime/tendencia/varianza) |
+| `POST` | `/api/monitors/{id}/check-now` | Fuerza una comprobación inmediata |
+| `DELETE` | `/api/monitors/{id}/history` | Reinicia el histórico del monitor (mantiene su configuración) |
 | `GET` | `/api/status-page` | Datos públicos de la página de estado |
 | `WS` | `/ws/live` | Stream en vivo de nuevos checks / health scores |
-| `GET`/`POST` | `/api/notifications` | Canales de notificación |
+| `GET`/`POST` | `/api/notifications` | Canales de notificación (Telegram, webhook, Discord vía webhook) |
+| `POST` | `/api/notifications/{id}/test` | Envía una notificación de prueba al canal |
 | `GET` | `/api/export` | Exporta la configuración completa (monitores + canales) en JSON |
 | `POST` | `/api/import` | Importa una configuración exportada previamente |
 
