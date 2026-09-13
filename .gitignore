@@ -13,8 +13,9 @@ node_modules/
 frontend/dist/
 
 # Data / runtime
-data/*.db
-data/*.sqlite3
+data/
+*.db
+*.sqlite3
 *.log
 
 # Env
