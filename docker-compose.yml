@@ -1,0 +1,17 @@
+services:
+  statussense:
+    build: .
+    image: statussense:latest
+    container_name: statussense
+    ports:
+      - "8080:8080"
+    volumes:
+      - statussense_data:/app/data
+    environment:
+      - CHECK_DEFAULT_INTERVAL=60
+      - TELEGRAM_BOT_TOKEN=
+      - TELEGRAM_CHAT_ID=
+    restart: unless-stopped
+
+volumes:
+  statussense_data:
