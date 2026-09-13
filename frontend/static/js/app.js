@@ -36,50 +36,86 @@ async function api(path, options = {}) {
 
 // ---------- Dashboard grid ----------
 
+let activeFilter = "all";
+let lastMonitors = [];
+
 async function loadMonitors() {
   const grid = document.getElementById("monitor-grid");
   const summary = document.getElementById("summary");
   try {
     const monitors = await api("/monitors");
+    lastMonitors = monitors;
     if (!monitors.length) {
       grid.innerHTML = '<div class="empty">Todavía no hay monitores. Pulsa "+ Añadir monitor" para crear el primero.</div>';
       summary.innerHTML = "";
       return;
     }
     const counts = { up: 0, degraded: 0, down: 0, paused: 0, pending: 0 };
-    grid.innerHTML = monitors
-      .map((m) => {
-        counts[m.status] = (counts[m.status] || 0) + 1;
-        const score = m.health_score ?? 0;
-        return `
-        <div class="card" data-id="${m.id}">
-          <div class="card-head">
-            <div>
-              <h3>${escapeHtml(m.name)}</h3>
-              <div class="target">${m.type.toUpperCase()} · ${escapeHtml(m.target)}</div>
-            </div>
-            <span class="badge ${m.status}"><span class="dot"></span>${statusLabel(m.status)}</span>
-          </div>
-          <div class="score-row">
-            <span class="score" style="color:${scoreColor(m.health_score)}">${m.health_score ?? "–"}</span>
-            <span class="score-label">/ 100 health score</span>
-          </div>
-          <div class="score-bar"><div style="width:${score}%; background:${scoreColor(m.health_score)}"></div></div>
-        </div>`;
-      })
-      .join("");
+    monitors.forEach((m) => { counts[m.status] = (counts[m.status] || 0) + 1; });
 
-    summary.innerHTML = Object.entries(counts)
-      .filter(([, c]) => c > 0)
-      .map(([k, c]) => `${c} ${statusLabel(k).toLowerCase()}`)
-      .join(" · ");
-
-    grid.querySelectorAll(".card").forEach((card) => {
-      card.addEventListener("click", () => openDetail(Number(card.dataset.id)));
-    });
+    renderFilters(summary, counts, monitors.length);
+    renderGrid(grid, monitors);
   } catch (err) {
     grid.innerHTML = `<div class="empty">Error cargando monitores: ${escapeHtml(err.message)}</div>`;
   }
+}
+
+function renderFilters(summary, counts, total) {
+  const chips = [
+    { key: "all", label: `Todos`, count: total },
+    { key: "up", label: statusLabel("up"), count: counts.up || 0 },
+    { key: "degraded", label: statusLabel("degraded"), count: counts.degraded || 0 },
+    { key: "down", label: statusLabel("down"), count: counts.down || 0 },
+    { key: "paused", label: statusLabel("paused"), count: counts.paused || 0 },
+  ].filter((c) => c.key === "all" || c.count > 0);
+
+  summary.innerHTML = chips
+    .map(
+      (c) => `<button type="button" class="filter-chip ${c.key === activeFilter ? "active" : ""}" data-filter="${c.key}">${c.label} <span class="count">${c.count}</span></button>`
+    )
+    .join("");
+
+  summary.querySelectorAll(".filter-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeFilter = btn.dataset.filter;
+      renderFilters(summary, counts, total);
+      renderGrid(document.getElementById("monitor-grid"), lastMonitors);
+    });
+  });
+}
+
+function renderGrid(grid, monitors) {
+  const visible = activeFilter === "all" ? monitors : monitors.filter((m) => m.status === activeFilter);
+
+  if (!visible.length) {
+    grid.innerHTML = '<div class="empty">Ningún monitor coincide con este filtro.</div>';
+    return;
+  }
+
+  grid.innerHTML = visible
+    .map((m) => {
+      const score = m.health_score ?? 0;
+      return `
+      <div class="card" data-id="${m.id}">
+        <div class="card-head">
+          <div>
+            <h3>${escapeHtml(m.name)}</h3>
+            <div class="target">${m.type.toUpperCase()} · ${escapeHtml(m.target)}</div>
+          </div>
+          <span class="badge ${m.status}"><span class="dot"></span>${statusLabel(m.status)}</span>
+        </div>
+        <div class="score-row">
+          <span class="score" style="color:${scoreColor(m.health_score)}">${m.health_score ?? "–"}</span>
+          <span class="score-label">/ 100 health score</span>
+        </div>
+        <div class="score-bar"><div style="width:${score}%; background:${scoreColor(m.health_score)}"></div></div>
+      </div>`;
+    })
+    .join("");
+
+  grid.querySelectorAll(".card").forEach((card) => {
+    card.addEventListener("click", () => openDetail(Number(card.dataset.id)));
+  });
 }
 
 function escapeHtml(str) {
@@ -99,7 +135,7 @@ async function openDetail(id) {
 
   const [monitor, checks, incidents] = await Promise.all([
     api(`/monitors/${id}`),
-    api(`/monitors/${id}/checks?limit=50`),
+    api(`/monitors/${id}/checks?limit=100`),
     api(`/monitors/${id}/incidents`),
   ]);
 
@@ -116,6 +152,8 @@ async function openDetail(id) {
       <span>Objetivo: ${escapeHtml(monitor.target)}</span>
       <span>Intervalo: ${monitor.interval_seconds}s</span>
     </div>
+    <div class="section-title">Cuándo falló (últimas ${orderedChecks.length} comprobaciones)</div>
+    ${renderHeatbar(orderedChecks)}
     <div class="section-title">Latencia reciente</div>
     <canvas id="detail-chart" height="120"></canvas>
     <div class="section-title">Incidentes</div>
@@ -149,6 +187,24 @@ async function openDetail(id) {
       },
     },
   });
+}
+
+function renderHeatbar(orderedChecks) {
+  if (!orderedChecks.length) {
+    return '<p style="color:var(--text-dim); font-size:0.85rem">Todavía no hay comprobaciones registradas.</p>';
+  }
+  const cells = orderedChecks
+    .map((c) => {
+      const time = new Date(c.timestamp).toLocaleString();
+      const detail = c.success
+        ? `${time} · OK · ${c.latency_ms != null ? c.latency_ms + "ms" : "–"}`
+        : `${time} · FALLO · ${c.error_message || (c.http_status ? "HTTP " + c.http_status : "sin respuesta")}`;
+      return `<div class="heat-cell ${c.success ? "" : "fail"}" title="${escapeHtml(detail)}"></div>`;
+    })
+    .join("");
+  const first = new Date(orderedChecks[0].timestamp).toLocaleTimeString();
+  const last = new Date(orderedChecks[orderedChecks.length - 1].timestamp).toLocaleTimeString();
+  return `<div class="heatbar">${cells}</div><div class="heatbar-caption"><span>${first}</span><span>${last}</span></div>`;
 }
 
 function renderIncidents(incidents) {
@@ -189,6 +245,30 @@ document.getElementById("detail-edit").addEventListener("click", async () => {
   if (!currentDetailId) return;
   const monitor = await api(`/monitors/${currentDetailId}`);
   openForm(monitor);
+});
+
+document.getElementById("detail-check-now").addEventListener("click", async (e) => {
+  if (!currentDetailId) return;
+  e.target.disabled = true;
+  try {
+    await api(`/monitors/${currentDetailId}/check-now`, { method: "POST" });
+    toast("Comprobación ejecutada");
+    await openDetail(currentDetailId);
+    loadMonitors();
+  } catch (err) {
+    toast("Error: " + err.message);
+  } finally {
+    e.target.disabled = false;
+  }
+});
+
+document.getElementById("detail-reset").addEventListener("click", async () => {
+  if (!currentDetailId) return;
+  if (!confirm("¿Reiniciar el histórico de este monitor? Se borrarán sus comprobaciones, health scores e incidentes (la configuración del monitor se mantiene).")) return;
+  await api(`/monitors/${currentDetailId}/history`, { method: "DELETE" });
+  toast("Histórico reiniciado");
+  await openDetail(currentDetailId);
+  loadMonitors();
 });
 
 // ---------- Create/edit form ----------
@@ -270,7 +350,10 @@ async function renderNotifChannels() {
     .map(
       (c) => `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border)">
         <span>${c.type === "telegram" ? "📨 Telegram" : "🪝 Webhook"} — ${escapeHtml(c.name || "sin nombre")}</span>
-        <button class="danger" data-channel-id="${c.id}">Eliminar</button>
+        <span>
+          <button class="secondary" data-test-id="${c.id}">Probar</button>
+          <button class="danger" data-channel-id="${c.id}">Eliminar</button>
+        </span>
       </div>`
     )
     .join("");
@@ -278,6 +361,21 @@ async function renderNotifChannels() {
     btn.addEventListener("click", async () => {
       await api(`/notifications/${btn.dataset.channelId}`, { method: "DELETE" });
       renderNotifChannels();
+    });
+  });
+  list.querySelectorAll("button[data-test-id]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "Enviando…";
+      try {
+        const result = await api(`/notifications/${btn.dataset.testId}/test`, { method: "POST" });
+        toast(result.success ? "Notificación de prueba enviada" : "No se pudo enviar: revisa la configuración del canal");
+      } catch (err) {
+        toast("Error: " + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Probar";
+      }
     });
   });
 }
