@@ -118,6 +118,68 @@ async def test_export_import_roundtrip(client):
     assert len(resp.json()) == 2  # el original + el importado
 
 
+async def test_check_now_runs_immediately(client, local_http_server):
+    host, port = local_http_server
+    created = (
+        await client.post(
+            "/api/monitors", json={"name": "CheckNow", "type": "tcp", "target": f"{host}:{port}", "interval_seconds": 60}
+        )
+    ).json()
+
+    resp = await client.post(f"/api/monitors/{created['id']}/check-now")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "up"
+
+    checks = (await client.get(f"/api/monitors/{created['id']}/checks")).json()
+    assert len(checks) == 1
+
+
+async def test_check_now_missing_monitor_404(client):
+    resp = await client.post("/api/monitors/999/check-now")
+    assert resp.status_code == 404
+
+
+async def test_reset_history_clears_data_but_keeps_monitor(client, local_http_server):
+    host, port = local_http_server
+    created = (
+        await client.post(
+            "/api/monitors", json={"name": "ResetMe", "type": "tcp", "target": f"{host}:{port}", "interval_seconds": 60}
+        )
+    ).json()
+    await client.post(f"/api/monitors/{created['id']}/check-now")
+    assert len((await client.get(f"/api/monitors/{created['id']}/checks")).json()) == 1
+
+    resp = await client.delete(f"/api/monitors/{created['id']}/history")
+    assert resp.status_code == 204
+
+    assert (await client.get(f"/api/monitors/{created['id']}/checks")).json() == []
+    assert (await client.get(f"/api/monitors/{created['id']}/incidents")).json() == []
+    assert (await client.get(f"/api/monitors/{created['id']}")).status_code == 200
+
+
+async def test_reset_history_missing_monitor_404(client):
+    resp = await client.delete("/api/monitors/999/history")
+    assert resp.status_code == 404
+
+
+async def test_notification_test_endpoint_reports_failure_for_unreachable_target(client):
+    created = (
+        await client.post(
+            "/api/notifications",
+            json={"type": "webhook", "name": "x", "config": {"url": "http://127.0.0.1:1/nope"}, "active": True},
+        )
+    ).json()
+
+    resp = await client.post(f"/api/notifications/{created['id']}/test")
+    assert resp.status_code == 200
+    assert resp.json() == {"success": False}
+
+
+async def test_notification_test_missing_channel_404(client):
+    resp = await client.post("/api/notifications/999/test")
+    assert resp.status_code == 404
+
+
 async def test_status_page_only_lists_active_monitors(client):
     await client.post(
         "/api/monitors", json={"name": "Activo", "type": "http", "target": "http://localhost", "interval_seconds": 60}
