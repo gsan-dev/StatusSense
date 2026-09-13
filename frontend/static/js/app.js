@@ -1,6 +1,5 @@
 const API = "/api";
 let currentDetailId = null;
-let detailChart = null;
 
 function toast(msg) {
   const el = document.getElementById("toast");
@@ -142,8 +141,6 @@ async function openDetail(id) {
   document.getElementById("detail-title").textContent = monitor.name;
 
   const orderedChecks = [...checks].reverse();
-  const labels = orderedChecks.map((c) => new Date(c.timestamp).toLocaleTimeString());
-  const latencies = orderedChecks.map((c) => c.latency_ms);
 
   body.innerHTML = `
     <div class="status-summary">
@@ -154,39 +151,70 @@ async function openDetail(id) {
     </div>
     <div class="section-title">Cuándo falló (últimas ${orderedChecks.length} comprobaciones)</div>
     ${renderHeatbar(orderedChecks)}
-    <div class="section-title">Latencia reciente</div>
-    <canvas id="detail-chart" height="120"></canvas>
+    <div class="section-title">Latencia reciente (ms)</div>
+    ${renderLatencyChart(orderedChecks)}
     <div class="section-title">Incidentes</div>
     ${renderIncidents(incidents)}
   `;
+}
 
-  const ctx = document.getElementById("detail-chart");
-  if (detailChart) detailChart.destroy();
-  detailChart = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "Latencia (ms)",
-          data: latencies,
-          borderColor: "#4a90e2",
-          backgroundColor: "rgba(74,144,226,0.1)",
-          spanGaps: true,
-          tension: 0.25,
-          pointRadius: 2,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { labels: { color: "#93a0bb" } } },
-      scales: {
-        x: { ticks: { color: "#93a0bb", maxTicksLimit: 8 }, grid: { color: "#2a344c" } },
-        y: { ticks: { color: "#93a0bb" }, grid: { color: "#2a344c" } },
-      },
-    },
+function renderLatencyChart(orderedChecks) {
+  const points = orderedChecks
+    .map((c, i) => ({ i, v: c.latency_ms, t: c.timestamp }))
+    .filter((p) => p.v !== null && p.v !== undefined);
+
+  if (points.length < 2) {
+    return '<p style="color:var(--text-dim); font-size:0.85rem">No hay suficiente latencia registrada todavía para dibujar un gráfico.</p>';
+  }
+
+  const w = 600, h = 160, padL = 42, padR = 10, padT = 10, padB = 22;
+  const n = orderedChecks.length;
+  const values = points.map((p) => p.v);
+  let min = Math.min(...values), max = Math.max(...values);
+  if (min === max) { min -= 10; max += 10; }
+  const pad = (max - min) * 0.12;
+  min = Math.max(0, min - pad);
+  max = max + pad;
+
+  const x = (i) => padL + (n === 1 ? 0 : (i / (n - 1)) * (w - padL - padR));
+  const y = (v) => padT + (1 - (v - min) / (max - min)) * (h - padT - padB);
+
+  let path = "", areaPath = "", started = false, lastPt = null;
+  orderedChecks.forEach((c, i) => {
+    if (c.latency_ms === null || c.latency_ms === undefined) { started = false; return; }
+    const px = x(i), py = y(c.latency_ms);
+    if (!started) {
+      path += `M${px.toFixed(1)},${py.toFixed(1)} `;
+      areaPath += `M${px.toFixed(1)},${(h - padB).toFixed(1)} L${px.toFixed(1)},${py.toFixed(1)} `;
+      started = true;
+    } else {
+      path += `L${px.toFixed(1)},${py.toFixed(1)} `;
+      areaPath += `L${px.toFixed(1)},${py.toFixed(1)} `;
+    }
+    lastPt = [px, py];
   });
+  if (lastPt) areaPath += `L${lastPt[0].toFixed(1)},${(h - padB).toFixed(1)} Z`;
+
+  const gridLines = [0, 0.5, 1]
+    .map((f) => {
+      const gy = padT + f * (h - padT - padB);
+      const val = Math.round(max - f * (max - min));
+      return `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${w - padR}" y2="${gy.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>
+              <text x="${padL - 6}" y="${(gy + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--text-dim)">${val}</text>`;
+    })
+    .join("");
+
+  const firstLabel = new Date(orderedChecks[0].timestamp).toLocaleTimeString();
+  const lastLabel = new Date(orderedChecks[orderedChecks.length - 1].timestamp).toLocaleTimeString();
+
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%; height:auto; display:block; overflow:visible" role="img" aria-label="Latencia reciente">
+    ${gridLines}
+    <path d="${areaPath}" fill="var(--blue)" opacity="0.12"/>
+    <path d="${path}" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${lastPt ? `<circle cx="${lastPt[0].toFixed(1)}" cy="${lastPt[1].toFixed(1)}" r="3.4" fill="var(--blue)" stroke="var(--bg-card)" stroke-width="2"/>` : ""}
+    <text x="${padL}" y="${h - 4}" font-size="10" fill="var(--text-dim)">${firstLabel}</text>
+    <text x="${w - padR}" y="${h - 4}" text-anchor="end" font-size="10" fill="var(--text-dim)">${lastLabel}</text>
+  </svg>`;
 }
 
 function renderHeatbar(orderedChecks) {
