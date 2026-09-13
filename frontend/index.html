@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StatusSense</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.7/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>📡 StatusSense</h1>
+    <div class="actions">
+      <button class="secondary" id="btn-notifications">Notificaciones</button>
+      <button class="secondary" id="btn-export">Exportar</button>
+      <button class="secondary" id="btn-import">Importar</button>
+      <button id="btn-add-monitor">+ Añadir monitor</button>
+      <a href="/status.html" target="_blank"><button class="secondary">Página de estado</button></a>
+    </div>
+  </header>
+
+  <main>
+    <div class="status-summary" id="summary"></div>
+    <div class="grid" id="monitor-grid">
+      <div class="empty">Cargando monitores…</div>
+    </div>
+  </main>
+
+  <!-- Modal: detalle de monitor -->
+  <div class="overlay" id="detail-overlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="detail-title">Monitor</h2>
+        <div>
+          <button class="secondary" id="detail-edit">Editar</button>
+          <button class="danger" id="detail-delete">Eliminar</button>
+          <button class="secondary" id="detail-close">Cerrar</button>
+        </div>
+      </div>
+      <div id="detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Modal: crear/editar monitor -->
+  <div class="overlay" id="form-overlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="form-title">Nuevo monitor</h2>
+        <button class="secondary" id="form-close">Cerrar</button>
+      </div>
+      <form id="monitor-form">
+        <input type="hidden" id="f-id" />
+        <div class="form-grid">
+          <label class="span-2">Nombre
+            <input id="f-name" required placeholder="ej. Portainer" />
+          </label>
+          <label>Tipo
+            <select id="f-type">
+              <option value="http">HTTP(S)</option>
+              <option value="tcp">TCP</option>
+              <option value="ping">Ping (ICMP)</option>
+              <option value="dns">DNS</option>
+            </select>
+          </label>
+          <label>Objetivo
+            <input id="f-target" required placeholder="https://host o host:puerto" />
+          </label>
+          <label>Intervalo (segundos)
+            <input id="f-interval" type="number" min="5" value="60" />
+          </label>
+          <label>Timeout (segundos)
+            <input id="f-timeout" type="number" min="1" step="0.5" value="10" />
+          </label>
+          <label>Peso uptime
+            <input id="f-uptime-weight" type="number" min="0" max="1" step="0.05" value="0.5" />
+          </label>
+          <label>Peso tendencia
+            <input id="f-degradation-weight" type="number" min="0" max="1" step="0.05" value="0.3" />
+          </label>
+          <label>Peso varianza
+            <input id="f-variance-weight" type="number" min="0" max="1" step="0.05" value="0.2" />
+          </label>
+          <label>Activo
+            <select id="f-active">
+              <option value="true">Sí</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+        </div>
+        <div style="margin-top:16px; text-align:right">
+          <button type="submit">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: notificaciones -->
+  <div class="overlay" id="notif-overlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Canales de notificación</h2>
+        <button class="secondary" id="notif-close">Cerrar</button>
+      </div>
+      <div id="notif-list"></div>
+      <div class="section-title">Añadir canal</div>
+      <form id="notif-form">
+        <div class="form-grid">
+          <label>Tipo
+            <select id="n-type">
+              <option value="telegram">Telegram</option>
+              <option value="webhook">Webhook</option>
+            </select>
+          </label>
+          <label>Nombre
+            <input id="n-name" placeholder="ej. Móvil" />
+          </label>
+          <div class="span-2" id="n-config-telegram">
+            <div class="form-grid">
+              <label>Bot token<input id="n-bot-token" /></label>
+              <label>Chat ID<input id="n-chat-id" /></label>
+            </div>
+          </div>
+          <div class="span-2" id="n-config-webhook" style="display:none">
+            <label>URL<input id="n-url" placeholder="https://..." /></label>
+          </div>
+        </div>
+        <div style="margin-top:16px; text-align:right">
+          <button type="submit">Añadir canal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: importar -->
+  <div class="overlay" id="import-overlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Importar configuración</h2>
+        <button class="secondary" id="import-close">Cerrar</button>
+      </div>
+      <p style="color:var(--text-dim); font-size:0.85rem">Pega aquí el JSON exportado desde otra instancia de StatusSense.</p>
+      <textarea id="import-json" rows="10" style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:10px"></textarea>
+      <div style="margin-top:16px; text-align:right">
+        <button id="import-submit">Importar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
