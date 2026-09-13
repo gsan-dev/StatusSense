@@ -105,3 +105,16 @@ class ExportBundle(BaseModel):
 class ImportResult(BaseModel):
     monitors_imported: int
     channels_imported: int
+
+
+class PublicMonitorStatus(BaseModel):
+    name: str
+    type: MonitorType
+    status: str
+    health_score: Optional[float] = None
+    uptime_pct_24h: Optional[float] = None
+
+
+class StatusPageOut(BaseModel):
+    generated_at: str
+    monitors: list[PublicMonitorStatus]
